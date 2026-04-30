@@ -111,25 +111,6 @@
         </section>
       </div>
 
-      <section class="card">
-        <h3>Captacao por CNAE</h3>
-        <div class="toolbar">
-          <input id="cnaeInput" placeholder="CNAE (ex: 4781400 ou 47.81-4-00)" />
-          <input id="ufInput" placeholder="UF (ex: SP)" />
-          <input id="cidadeInput" placeholder="Cidade (opcional)" />
-          <button type="button" onclick="searchByCnae()">Buscar empresas</button>
-        </div>
-        <div class="toolbar-2" style="margin-top:8px;">
-          <small class="muted">Resultado inicial em modo demonstracao (mock), sem backend.</small>
-          <button class="btn-secondary" type="button" onclick="importSelected()">Importar selecionadas</button>
-        </div>
-        <table style="margin-top:10px;">
-          <thead>
-            <tr><th></th><th>CNPJ</th><th>Empresa</th><th>Cidade/UF</th><th>CNAE</th><th>Status</th></tr>
-          </thead>
-          <tbody id="cnaeRows"></tbody>
-        </table>
-      </section>
       <p id="panelMsg" class="muted"></p>
       </section>
 
@@ -143,7 +124,22 @@
       </section>
       <section id="module-captacao" class="card row" style="display:none;">
         <h3>Captação</h3>
-        <p class="muted">Módulo em preparação: busca por CNAE e integração n8n.</p>
+        <div class="toolbar">
+          <input id="cnaeInput" placeholder="CNAE (ex: 4781400 ou 47.81-4-00)" />
+          <input id="ufInput" placeholder="UF (ex: SP)" />
+          <input id="cidadeInput" placeholder="Cidade (opcional)" />
+          <button type="button" onclick="searchByCnae()">Buscar empresas</button>
+        </div>
+        <div class="toolbar-2" style="margin-top:8px;">
+          <small class="muted">Resultado inicial em modo demonstração (mock), sem backend.</small>
+          <button class="btn-secondary" type="button" onclick="importSelected()">Importar selecionadas</button>
+        </div>
+        <table style="margin-top:10px;">
+          <thead>
+            <tr><th></th><th>CNPJ</th><th>Empresa</th><th>Cidade/UF</th><th>CNAE</th><th>Status</th></tr>
+          </thead>
+          <tbody id="cnaeRows"></tbody>
+        </table>
       </section>
       <section id="module-mapa" class="card row" style="display:none;">
         <h3>Mapa</h3>
