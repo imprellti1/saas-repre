@@ -13,6 +13,27 @@ app.use(express.json());
 
 const PORT = Number(process.env.PORT || 3000);
 const JWT_SECRET = process.env.JWT_SECRET || "change-me";
+const MASTER_EMAIL = String(process.env.MASTER_EMAIL || "").toLowerCase();
+
+function isMasterUser(user) {
+  if (!user) return false;
+  if (String(user.role || "").toLowerCase() === "owner" && !user.accountId) return true;
+  return MASTER_EMAIL && String(user.email || "").toLowerCase() === MASTER_EMAIL;
+}
+
+async function hasActiveAccess(user) {
+  if (!user) return false;
+  if (isMasterUser(user)) return true;
+  if (!user.accountId) return false;
+  const sub = await prisma.subscription.findFirst({
+    where: { accountId: user.accountId },
+    orderBy: { createdAt: "desc" },
+  });
+  if (!sub) return false;
+  if (!["active", "trialing"].includes(String(sub.status || ""))) return false;
+  if (!sub.currentPeriodEnd) return true;
+  return new Date(sub.currentPeriodEnd).getTime() >= Date.now();
+}
 
 function auth(req, res, next) {
   const token = String(req.headers.authorization || "").replace("Bearer ", "");
@@ -51,6 +72,8 @@ app.post("/api/login", async (req, res) => {
   if (!user) return res.status(401).json({ error: "Credenciais invalidas" });
   const ok = await bcrypt.compare(String(password || ""), user.passwordHash);
   if (!ok) return res.status(401).json({ error: "Credenciais invalidas" });
+  const allowed = await hasActiveAccess(user);
+  if (!allowed) return res.status(402).json({ error: "Acesso expirado ou assinatura inativa" });
   const token = jwt.sign({ id: user.id, role: user.role, email: user.email }, JWT_SECRET, { expiresIn: "12h" });
   res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
 });
