@@ -34,6 +34,8 @@
     th,td{padding:8px;border-bottom:1px solid #2a3648;font-size:13px;text-align:left}
     th{color:var(--muted)}
     .muted{color:var(--muted);margin-top:8px}
+    .modal-backdrop{position:fixed;inset:0;background:rgba(2,6,23,.78);display:none;align-items:center;justify-content:center;padding:20px}
+    .modal{width:min(1000px,100%);max-height:88vh;overflow:auto;background:#0f172a;border:1px solid #334155;border-radius:14px;padding:14px}
     #panel{display:none}
     @media (max-width:900px){.shell{grid-template-columns:1fr}.sidebar{position:static}.metrics{grid-template-columns:1fr 1fr}.grid{grid-template-columns:1fr}.toolbar{grid-template-columns:1fr}}
   </style>
@@ -123,8 +125,8 @@
           <button class="btn-secondary" type="button" onclick="clearClientsFilter()">Limpar</button>
         </div>
         <table>
-          <thead><tr><th>Empresa</th><th>CNPJ</th><th>Cidade</th><th>Status</th><th>Preposto</th></tr></thead>
-          <tbody id="clientsRows"><tr><td colspan="5">Carregando...</td></tr></tbody>
+          <thead><tr><th>Empresa</th><th>CNPJ</th><th>Cidade</th><th>Status</th><th>Preposto</th><th></th></tr></thead>
+          <tbody id="clientsRows"><tr><td colspan="6">Carregando...</td></tr></tbody>
         </table>
         <p id="clientsInfo" class="muted"></p>
       </section>
@@ -161,6 +163,15 @@
       </section>
     </section>
   </main>
+  <div id="clientModalBackdrop" class="modal-backdrop" onclick="closeClientModal(event)">
+    <section class="modal" id="clientModal">
+      <div class="topbar">
+        <h3 id="clientModalTitle">Detalhes do cliente</h3>
+        <button class="btn-secondary" onclick="closeClientModal()">Fechar</button>
+      </div>
+      <div id="clientModalContent" class="row"></div>
+    </section>
+  </div>
 
 <script>
 const API = window.API_BASE || "https://api.neuralhire.com.br";
@@ -303,8 +314,9 @@ function renderClientsTable() {
       <td>${c.cidade || "-"}</td>
       <td>${c.status || "ativo"}</td>
       <td>${c.preposto || "Sem preposto"}</td>
+      <td><button class="btn-secondary" onclick="openClientDetails('${c.id}')">Detalhes</button></td>
     </tr>
-  `).join("") || `<tr><td colspan="5">Nenhum cliente encontrado.</td></tr>`;
+  `).join("") || `<tr><td colspan="6">Nenhum cliente encontrado.</td></tr>`;
   info.textContent = `${filtered.length} cliente(s) exibido(s) de ${clientsState.length}.`;
 }
 
@@ -317,8 +329,56 @@ async function loadClients() {
     clientsState = Array.isArray(data) ? data : [];
     renderClientsTable();
   } catch (e) {
-    rows.innerHTML = `<tr><td colspan="5">Falha ao carregar clientes.</td></tr>`;
+    rows.innerHTML = `<tr><td colspan="6">Falha ao carregar clientes.</td></tr>`;
     info.textContent = `Erro: ${e.message}`;
+  }
+}
+
+function closeClientModal(ev) {
+  if (ev && ev.target && ev.target.id !== "clientModalBackdrop") return;
+  document.getElementById("clientModalBackdrop").style.display = "none";
+}
+
+async function openClientDetails(id) {
+  const panelMsg = document.getElementById("panelMsg");
+  try {
+    const data = await authedApi(`/api/clientes/${encodeURIComponent(id)}/details`);
+    const c = data.cliente || {};
+    document.getElementById("clientModalTitle").textContent = c.empresa || c.razao_social || c.nome_fantasia || "Cliente";
+    document.getElementById("clientModalContent").innerHTML = `
+      <div class="metrics">
+        <article class="metric"><span>Pedidos</span><strong>${data.metrics?.totalOrders || 0}</strong></article>
+        <article class="metric"><span>Valor acumulado</span><strong>${fmtMoney(data.metrics?.totalValue || 0)}</strong></article>
+        <article class="metric"><span>Ticket médio</span><strong>${fmtMoney(data.metrics?.avgTicket || 0)}</strong></article>
+        <article class="metric"><span>Última compra</span><strong>${fmtDate(data.metrics?.lastPurchaseAt)}</strong></article>
+      </div>
+      <section class="card">
+        <h4>Cadastro</h4>
+        <p><strong>CNPJ:</strong> ${formatCnpj(c.cnpj)}</p>
+        <p><strong>Cidade:</strong> ${c.cidade || "-"}</p>
+        <p><strong>Status:</strong> ${c.status || "-"}</p>
+        <p><strong>Preposto:</strong> ${c.preposto || "-"}</p>
+      </section>
+      <section class="grid">
+        <article class="card">
+          <h4>Top itens (quantidade)</h4>
+          <table><thead><tr><th>Item</th><th>Qtd</th><th>Valor</th></tr></thead>
+          <tbody>
+            ${(data.topItems || []).map(i => `<tr><td>${i.name}</td><td>${i.qty}</td><td>${fmtMoney(i.value)}</td></tr>`).join("") || '<tr><td colspan="3">Sem itens.</td></tr>'}
+          </tbody></table>
+        </article>
+        <article class="card">
+          <h4>Últimos pedidos</h4>
+          <table><thead><tr><th>RP</th><th>Data</th><th>Status</th><th>Valor</th></tr></thead>
+          <tbody>
+            ${(data.orders || []).map(o => `<tr><td>${o.numero_rp || "-"}</td><td>${fmtDate(o.data_emissao || o.created_at)}</td><td>${o.situacao || "-"}</td><td>${fmtMoney(o.valor_total)}</td></tr>`).join("") || '<tr><td colspan="4">Sem pedidos.</td></tr>'}
+          </tbody></table>
+        </article>
+      </section>
+    `;
+    document.getElementById("clientModalBackdrop").style.display = "flex";
+  } catch (e) {
+    panelMsg.textContent = `Falha ao abrir detalhes: ${e.message}`;
   }
 }
 
