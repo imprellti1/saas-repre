@@ -7,31 +7,108 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum AccountStatus {
+  trial
+  active
+  past_due
+  canceled
+}
+
+enum UserRole {
+  owner
+  admin
+  operator
+}
+
+enum BillingCycle {
+  monthly
+  yearly
+}
+
+enum SubscriptionStatus {
+  trialing
+  active
+  past_due
+  canceled
+  unpaid
+}
+
+enum InvoiceStatus {
+  draft
+  open
+  paid
+  void
+  uncollectible
+}
+
+model Plan {
+  id             String         @id @default(uuid())
+  code           String         @unique
+  name           String
+  description    String?
+  priceMonthly   Decimal        @db.Decimal(10, 2)
+  priceYearly    Decimal?       @db.Decimal(10, 2)
+  userLimit      Int            @default(1)
+  leadLimit      Int?
+  isActive       Boolean        @default(true)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  accounts       Account[]
+  subscriptions  Subscription[]
+}
+
+model Account {
+  id               String          @id @default(uuid())
+  name             String
+  slug             String          @unique
+  status           AccountStatus   @default(trial)
+  trialEndsAt      DateTime?
+  currentPeriodEnd DateTime?
+  planId           String?
+  plan             Plan?           @relation(fields: [planId], references: [id])
+  users            User[]
+  clientes         Cliente[]
+  pedidos          Pedido[]
+  subscriptions    Subscription[]
+  invoices         Invoice[]
+  usageEvents      UsageEvent[]
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+}
+
 model User {
   id           String   @id @default(uuid())
+  accountId    String?
   name         String
   email        String   @unique
   passwordHash String
-  role         String   @default("admin")
+  role         UserRole @default(admin)
+  account      Account? @relation(fields: [accountId], references: [id])
   createdAt    DateTime @default(now())
+
+  @@index([accountId])
 }
 
 model Cliente {
   id        String   @id @default(uuid())
+  accountId String?
   nome      String
   cnpj      String?  @db.VarChar(14)
   cidade    String?
   preposto  String?
   status    String   @default("ativo")
+  account   Account? @relation(fields: [accountId], references: [id])
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   pedidos   Pedido[]
 
+  @@index([accountId])
   @@index([cnpj])
 }
 
 model Pedido {
   id            String   @id @default(uuid())
+  accountId      String?
   numeroRp      String
   cnpj          String?  @db.VarChar(14)
   situacao      String?
@@ -39,9 +116,63 @@ model Pedido {
   dataEmissao   DateTime?
   clienteId     String?
   cliente       Cliente? @relation(fields: [clienteId], references: [id])
+  account       Account? @relation(fields: [accountId], references: [id])
   createdAt     DateTime @default(now())
 
+  @@index([accountId])
   @@index([clienteId])
   @@index([cnpj])
-  @@unique([numeroRp])
+  @@unique([accountId, numeroRp])
+}
+
+model Subscription {
+  id                    String             @id @default(uuid())
+  accountId             String
+  account               Account            @relation(fields: [accountId], references: [id])
+  planId                String
+  plan                  Plan               @relation(fields: [planId], references: [id])
+  status                SubscriptionStatus @default(trialing)
+  billingCycle          BillingCycle       @default(monthly)
+  gatewayProvider       String?
+  gatewayCustomerId     String?
+  gatewaySubscriptionId String?            @unique
+  currentPeriodStart    DateTime?
+  currentPeriodEnd      DateTime?
+  cancelAtPeriodEnd     Boolean            @default(false)
+  canceledAt            DateTime?
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+
+  @@index([accountId, status])
+}
+
+model Invoice {
+  id               String        @id @default(uuid())
+  accountId        String
+  account          Account       @relation(fields: [accountId], references: [id])
+  subscriptionId   String?
+  subscription     Subscription? @relation(fields: [subscriptionId], references: [id])
+  status           InvoiceStatus @default(draft)
+  amount           Decimal       @db.Decimal(10, 2)
+  currency         String        @default("BRL")
+  dueDate          DateTime?
+  paidAt           DateTime?
+  gatewayInvoiceId String?       @unique
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  @@index([accountId, status])
+}
+
+model UsageEvent {
+  id          String   @id @default(uuid())
+  accountId   String
+  account     Account  @relation(fields: [accountId], references: [id])
+  metric      String
+  quantity    Int      @default(1)
+  referenceId String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  @@index([accountId, metric, createdAt])
 }
