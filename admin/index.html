@@ -6,8 +6,8 @@
   <title>NeuralHire Admin</title>
   <style>
     :root{--bg:#0b1224;--card:#1f2937;--line:#334155;--text:#fff;--muted:#94a3b8;--brand:#7c3aed}
-    body{font-family:Arial,sans-serif;background:radial-gradient(circle at 10% 10%,#16203f,#070d1c 60%);color:var(--text);margin:0;min-height:100vh;padding:24px}
-    .shell{width:min(1100px,100%);margin:0 auto}
+    body{font-family:Arial,sans-serif;background:radial-gradient(circle at 10% 10%,#16203f,#070d1c 60%);color:var(--text);margin:0;min-height:100vh;padding:16px}
+    .shell{width:min(1300px,100%);margin:0 auto;display:grid;grid-template-columns:240px 1fr;gap:12px}
     h1{margin:0 0 16px}
     .card{background:var(--card);padding:16px;border-radius:12px;border:1px solid #243043}
     .row{display:grid;gap:8px}
@@ -16,6 +16,10 @@
     .btn-secondary{background:#334155}
     .password-row{display:grid;grid-template-columns:1fr auto;gap:8px}
     .topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+    .sidebar{background:var(--card);border:1px solid #243043;border-radius:12px;padding:12px;height:fit-content;position:sticky;top:16px}
+    .nav{display:grid;gap:8px;margin-top:10px}
+    .nav button{background:#111827;text-align:left}
+    .nav button.active{background:var(--brand)}
     .metrics{display:grid;grid-template-columns:repeat(4,minmax(160px,1fr));gap:12px;margin-top:14px}
     .metric{background:#111827;border:1px solid var(--line);border-radius:12px;padding:12px}
     .metric span{color:var(--muted);font-size:12px}
@@ -30,14 +34,27 @@
     th{color:var(--muted)}
     .muted{color:var(--muted);margin-top:8px}
     #panel{display:none}
-    @media (max-width:900px){.metrics{grid-template-columns:1fr 1fr}.grid{grid-template-columns:1fr}}
+    @media (max-width:900px){.shell{grid-template-columns:1fr}.sidebar{position:static}.metrics{grid-template-columns:1fr 1fr}.grid{grid-template-columns:1fr}.toolbar{grid-template-columns:1fr}}
   </style>
 </head>
 <body>
   <main class="shell">
-    <h1>NeuralHire Admin</h1>
+    <aside id="sidebar" class="sidebar" style="display:none;">
+      <strong>NeuralHire Admin</strong>
+      <div class="nav">
+        <button id="nav-dashboard" class="active" onclick="showModule('dashboard')">Dashboard</button>
+        <button id="nav-clientes" onclick="showModule('clientes')">Clientes</button>
+        <button id="nav-leads" onclick="showModule('leads')">Leads</button>
+        <button id="nav-captacao" onclick="showModule('captacao')">Captação</button>
+        <button id="nav-mapa" onclick="showModule('mapa')">Mapa</button>
+        <button id="nav-importacoes" onclick="showModule('importacoes')">Importações</button>
+      </div>
+      <div style="margin-top:12px;">
+        <button class="btn-secondary" onclick="logout()">Sair</button>
+      </div>
+    </aside>
 
-    <section id="login" class="card row" style="max-width:560px;margin:0 auto;">
+    <section id="login" class="card row" style="max-width:560px;margin:0 auto;grid-column:1/-1;">
       <h3>Login</h3>
       <input id="lemail" placeholder="Email" />
       <div class="password-row">
@@ -48,7 +65,9 @@
       <p id="msg" class="muted"></p>
     </section>
 
-    <section id="panel" class="row">
+    <section id="panel" class="row" style="display:none;">
+      <h1 style="margin:0 0 4px;">NeuralHire Admin</h1>
+      <section id="module-dashboard" class="row">
       <div class="card topbar">
         <div>
           <strong>Resumo executivo</strong>
@@ -112,6 +131,28 @@
         </table>
       </section>
       <p id="panelMsg" class="muted"></p>
+      </section>
+
+      <section id="module-clientes" class="card row" style="display:none;">
+        <h3>Clientes</h3>
+        <p class="muted">Módulo em preparação: listagem, detalhes, relacionamento e comunicação.</p>
+      </section>
+      <section id="module-leads" class="card row" style="display:none;">
+        <h3>Leads</h3>
+        <p class="muted">Módulo em preparação: captura, qualificação e conversão.</p>
+      </section>
+      <section id="module-captacao" class="card row" style="display:none;">
+        <h3>Captação</h3>
+        <p class="muted">Módulo em preparação: busca por CNAE e integração n8n.</p>
+      </section>
+      <section id="module-mapa" class="card row" style="display:none;">
+        <h3>Mapa</h3>
+        <p class="muted">Módulo em preparação: visão geográfica por status (lead/ativo/inativo/90+).</p>
+      </section>
+      <section id="module-importacoes" class="card row" style="display:none;">
+        <h3>Importações</h3>
+        <p class="muted">Módulo em preparação: clientes, pedidos e itens por conta.</p>
+      </section>
     </section>
   </main>
 
@@ -131,6 +172,19 @@ function togglePassword(inputId, button){
 function setView(authenticated) {
   document.getElementById("login").style.display = authenticated ? "none" : "grid";
   document.getElementById("panel").style.display = authenticated ? "grid" : "none";
+  document.getElementById("sidebar").style.display = authenticated ? "block" : "none";
+  if (authenticated) showModule("dashboard");
+}
+
+function showModule(name) {
+  const modules = ["dashboard", "clientes", "leads", "captacao", "mapa", "importacoes"];
+  modules.forEach((m) => {
+    const section = document.getElementById(`module-${m}`);
+    const nav = document.getElementById(`nav-${m}`);
+    const active = m === name;
+    if (section) section.style.display = active ? "grid" : "none";
+    if (nav) nav.classList.toggle("active", active);
+  });
 }
 
 async function login(){
