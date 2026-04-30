@@ -21,16 +21,6 @@
   <main class="shell">
   <h1>NeuralHire Admin</h1>
   <div class="card">
-    <div id="setup" class="row">
-      <h3>Primeiro acesso</h3>
-      <input id="name" placeholder="Nome" />
-      <input id="email" placeholder="Email" />
-      <div class="password-row">
-        <input id="password" type="password" placeholder="Senha" />
-        <button class="btn-secondary" type="button" onclick="togglePassword('password', this)">Mostrar</button>
-      </div>
-      <button onclick="setup()">Criar primeiro admin</button>
-    </div>
     <div id="login" class="row" hidden>
       <h3>Login</h3>
       <input id="lemail" placeholder="Email" />
@@ -50,14 +40,11 @@
   </main>
 <script>
 const API = window.API_BASE || "https://api.neuralhire.com.br";
-function setView({ setup=false, login=false, panel=false }) {
-  const setupEl = document.getElementById("setup");
+function setView({ login=false, panel=false }) {
   const loginEl = document.getElementById("login");
   const panelEl = document.getElementById("panel");
-  setupEl.hidden = !setup;
   loginEl.hidden = !login;
   panelEl.hidden = !panel;
-  setupEl.style.display = setup ? "grid" : "none";
   loginEl.style.display = login ? "grid" : "none";
   panelEl.style.display = panel ? "grid" : "none";
 }
@@ -69,30 +56,13 @@ async function boot(){
     msg.textContent = "Sessao ativa.";
     return;
   }
-  const r=await fetch(API+"/api/setup/status");
-  const d=await r.json();
-  setView({ setup: !!d.needsSetup, login: !d.needsSetup, panel: false });
+  setView({ login: true, panel: false });
 }
 function togglePassword(inputId, button){
   const input = document.getElementById(inputId);
   const hidden = input.type === "password";
   input.type = hidden ? "text" : "password";
   button.textContent = hidden ? "Ocultar" : "Mostrar";
-}
-async function setup(){
-  try{
-    const body={
-      name: document.getElementById("name").value,
-      email: document.getElementById("email").value,
-      password: document.getElementById("password").value,
-    };
-    const r=await fetch(API+"/api/setup",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});
-    const d=await r.json();
-    msg.textContent=d?.error?`Erro: ${d.error}`:"Admin criado com sucesso.";
-    await boot();
-  }catch(e){
-    msg.textContent=`Falha ao criar admin: ${e.message}`;
-  }
 }
 async function login(){
   try{
