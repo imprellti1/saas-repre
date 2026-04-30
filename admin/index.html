@@ -6,7 +6,7 @@
   <title>NeuralHire Admin</title>
   <style>
     body{font-family:Arial,sans-serif;background:#0b1224;color:#fff;margin:0;min-height:100vh;display:grid;place-items:center;padding:24px}
-    .shell{width:min(560px,100%)}
+    .shell{width:min(920px,100%)}
     h1{text-align:center;margin:0 0 16px}
     input,button{padding:12px;margin:6px 0;border-radius:10px;border:1px solid #374151}
     button{background:#7c3aed;color:#fff;border:0;cursor:pointer}
@@ -15,6 +15,11 @@
     .row{display:grid;gap:8px}
     .muted{opacity:.8}
     .password-row{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center}
+    .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    .section{margin-top:16px;padding-top:12px;border-top:1px solid #334155}
+    .list{display:grid;gap:8px}
+    .item{background:#111827;border:1px solid #334155;border-radius:10px;padding:10px}
+    small{opacity:.8}
   </style>
 </head>
 <body>
@@ -33,6 +38,40 @@
     <div id="panel" class="row" hidden>
       <h3>Painel</h3>
       <p>Autenticado com sucesso.</p>
+
+      <section class="section row">
+        <h4>Criar conta pagante</h4>
+        <div class="grid-2">
+          <input id="accName" placeholder="Nome da conta" />
+          <input id="accSlug" placeholder="Slug (ex: loja-abc)" />
+        </div>
+        <div class="grid-2">
+          <input id="ownerName" placeholder="Nome do owner" />
+          <input id="ownerEmail" placeholder="Email do owner" />
+        </div>
+        <div class="grid-2">
+          <input id="ownerPassword" type="password" placeholder="Senha inicial owner" />
+          <select id="planCode">
+            <option value="basic">Basic</option>
+            <option value="pro">Pro</option>
+            <option value="top">Top</option>
+          </select>
+        </div>
+        <div class="grid-2">
+          <input id="trialDays" type="number" value="15" min="1" max="60" />
+          <button type="button" onclick="createAccount()">Criar conta</button>
+        </div>
+      </section>
+
+      <section class="section row">
+        <h4>Consultar assinatura</h4>
+        <div class="grid-2">
+          <input id="subscriptionAccountId" placeholder="Account ID" />
+          <button type="button" onclick="loadSubscription()">Buscar assinatura</button>
+        </div>
+        <div id="subscriptionResult" class="item" hidden></div>
+      </section>
+
       <button type="button" onclick="logout()">Sair</button>
     </div>
     <p id="msg" class="muted"></p>
@@ -77,6 +116,61 @@ async function login(){
     if (d.token) await boot();
   }catch(e){
     msg.textContent=`Falha no login: ${e.message}`;
+  }
+}
+
+async function authedApi(path, options = {}) {
+  const token = localStorage.getItem("token");
+  const response = await fetch(API + path, {
+    method: options.method || "GET",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${token}`,
+    },
+    body: options.body ? JSON.stringify(options.body) : undefined,
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data?.error || `Erro HTTP ${response.status}`);
+  return data;
+}
+
+async function createAccount() {
+  try {
+    const payload = {
+      name: document.getElementById("accName").value,
+      slug: document.getElementById("accSlug").value,
+      ownerName: document.getElementById("ownerName").value,
+      ownerEmail: document.getElementById("ownerEmail").value,
+      ownerPassword: document.getElementById("ownerPassword").value,
+      planCode: document.getElementById("planCode").value,
+      trialDays: Number(document.getElementById("trialDays").value || 15),
+    };
+    const result = await authedApi("/api/accounts", { method: "POST", body: payload });
+    msg.textContent = `Conta criada: ${result.account?.name} (${result.account?.id})`;
+  } catch (e) {
+    msg.textContent = `Falha ao criar conta: ${e.message}`;
+  }
+}
+
+async function loadSubscription() {
+  const accountId = document.getElementById("subscriptionAccountId").value.trim();
+  if (!accountId) {
+    msg.textContent = "Informe o Account ID.";
+    return;
+  }
+  try {
+    const data = await authedApi(`/api/accounts/${encodeURIComponent(accountId)}/subscription`);
+    const target = document.getElementById("subscriptionResult");
+    target.hidden = false;
+    target.innerHTML = `
+      <strong>Status:</strong> ${data.status}<br/>
+      <strong>Plano:</strong> ${data.plan?.name || data.planId}<br/>
+      <strong>Ciclo:</strong> ${data.billingCycle}<br/>
+      <strong>Periodo fim:</strong> ${data.currentPeriodEnd || "-"}
+    `;
+    msg.textContent = "Assinatura carregada.";
+  } catch (e) {
+    msg.textContent = `Falha ao consultar assinatura: ${e.message}`;
   }
 }
 function logout(){
