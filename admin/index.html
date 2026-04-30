@@ -23,6 +23,8 @@
     .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
     .trend-up{color:#22c55e}
     .trend-down{color:#ef4444}
+    .toolbar{display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:8px}
+    .toolbar-2{display:grid;grid-template-columns:1fr auto;gap:8px}
     table{width:100%;border-collapse:collapse}
     th,td{padding:8px;border-bottom:1px solid #2a3648;font-size:13px;text-align:left}
     th{color:var(--muted)}
@@ -89,6 +91,26 @@
           </table>
         </section>
       </div>
+
+      <section class="card">
+        <h3>Captacao por CNAE</h3>
+        <div class="toolbar">
+          <input id="cnaeInput" placeholder="CNAE (ex: 4781400 ou 47.81-4-00)" />
+          <input id="ufInput" placeholder="UF (ex: SP)" />
+          <input id="cidadeInput" placeholder="Cidade (opcional)" />
+          <button type="button" onclick="searchByCnae()">Buscar empresas</button>
+        </div>
+        <div class="toolbar-2" style="margin-top:8px;">
+          <small class="muted">Resultado inicial em modo demonstracao (mock), sem backend.</small>
+          <button class="btn-secondary" type="button" onclick="importSelected()">Importar selecionadas</button>
+        </div>
+        <table style="margin-top:10px;">
+          <thead>
+            <tr><th></th><th>CNPJ</th><th>Empresa</th><th>Cidade/UF</th><th>CNAE</th><th>Status</th></tr>
+          </thead>
+          <tbody id="cnaeRows"></tbody>
+        </table>
+      </section>
       <p id="panelMsg" class="muted"></p>
     </section>
   </main>
@@ -97,6 +119,7 @@
 const API = window.API_BASE || "https://api.neuralhire.com.br";
 const fmtMoney = (v) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(v || 0));
 const fmtDate = (v) => { const d = new Date(v); return Number.isNaN(d.getTime()) ? "-" : d.toLocaleDateString("pt-BR"); };
+let cnaeMockRows = [];
 
 function togglePassword(inputId, button){
   const input = document.getElementById(inputId);
@@ -176,9 +199,56 @@ async function loadDashboard() {
     `).join("") || '<tr><td colspan="3">Sem dados de ranking.</td></tr>';
 
     panelMsg.textContent = "Dados atualizados com sucesso.";
+    if (!cnaeMockRows.length) renderCnaeRows([]);
   } catch (e) {
     panelMsg.textContent = `Falha ao carregar dashboard: ${e.message}`;
   }
+}
+
+function renderCnaeRows(rows) {
+  const tbody = document.getElementById("cnaeRows");
+  tbody.innerHTML = rows.map((r, idx) => `
+    <tr>
+      <td><input type="checkbox" data-cnae-check="${idx}" /></td>
+      <td>${r.cnpj}</td>
+      <td>${r.empresa}</td>
+      <td>${r.cidade}/${r.uf}</td>
+      <td>${r.cnae}</td>
+      <td>${r.status}</td>
+    </tr>
+  `).join("") || `<tr><td colspan="6">Nenhuma empresa carregada.</td></tr>`;
+}
+
+function normalizeCnae(input) {
+  return String(input || "").replace(/\D/g, "");
+}
+
+function searchByCnae() {
+  const panelMsg = document.getElementById("panelMsg");
+  const cnae = normalizeCnae(document.getElementById("cnaeInput").value);
+  const uf = String(document.getElementById("ufInput").value || "").toUpperCase().trim() || "SP";
+  const cidade = String(document.getElementById("cidadeInput").value || "").trim() || "Sao Paulo";
+  if (!cnae) {
+    panelMsg.textContent = "Informe um CNAE para pesquisar.";
+    return;
+  }
+  cnaeMockRows = [
+    { cnpj: "12345678000199", empresa: "Comercial Exemplo 1", cidade, uf, cnae, status: "novo" },
+    { cnpj: "98765432000110", empresa: "Distribuidora Exemplo 2", cidade, uf, cnae, status: "novo" },
+    { cnpj: "44556677000188", empresa: "Atacado Exemplo 3", cidade, uf, cnae, status: "novo" },
+  ];
+  renderCnaeRows(cnaeMockRows);
+  panelMsg.textContent = `Busca mock concluida para CNAE ${cnae}.`;
+}
+
+function importSelected() {
+  const panelMsg = document.getElementById("panelMsg");
+  const checks = [...document.querySelectorAll("[data-cnae-check]:checked")];
+  if (!checks.length) {
+    panelMsg.textContent = "Selecione ao menos uma empresa para importar.";
+    return;
+  }
+  panelMsg.textContent = `${checks.length} empresa(s) marcadas para importacao (modo mock).`;
 }
 
 (async function boot(){
