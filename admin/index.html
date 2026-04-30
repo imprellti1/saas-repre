@@ -314,11 +314,11 @@ function renderClientsTable() {
       <td>${c.cidade || "-"}</td>
       <td>${c.status || "ativo"}</td>
       <td>${c.preposto || "Sem preposto"}</td>
-      <td><button class="btn-secondary" data-client-id="${c.id || ""}">Detalhes</button></td>
+      <td><button class="btn-secondary" data-client-id="${c.id || ""}" data-client-cnpj="${String(c.cnpj || "").replace(/\D/g, "")}">Detalhes</button></td>
     </tr>
   `).join("") || `<tr><td colspan="6">Nenhum cliente encontrado.</td></tr>`;
   rows.querySelectorAll("[data-client-id]").forEach((btn) => {
-    btn.addEventListener("click", () => openClientDetails(btn.getAttribute("data-client-id")));
+    btn.addEventListener("click", () => openClientDetails(btn.getAttribute("data-client-id"), btn.getAttribute("data-client-cnpj")));
   });
   info.textContent = `${filtered.length} cliente(s) exibido(s) de ${clientsState.length}.`;
 }
@@ -342,11 +342,13 @@ function closeClientModal(ev) {
   document.getElementById("clientModalBackdrop").style.display = "none";
 }
 
-async function openClientDetails(id) {
+async function openClientDetails(id, cnpj = "") {
   const panelMsg = document.getElementById("panelMsg");
   try {
-    if (!id) throw new Error("Cliente sem ID. Verifique se a tabela clientes possui coluna id preenchida.");
-    const data = await authedApi(`/api/clientes/${encodeURIComponent(id)}/details`);
+    if (!id && !cnpj) throw new Error("Cliente sem ID/CNPJ para abrir detalhes.");
+    const data = id
+      ? await authedApi(`/api/clientes/${encodeURIComponent(id)}/details`)
+      : await authedApi(`/api/clientes/details-by-cnpj/${encodeURIComponent(cnpj)}`);
     const c = data.cliente || {};
     document.getElementById("clientModalTitle").textContent = c.empresa || c.razao_social || c.nome_fantasia || "Cliente";
     document.getElementById("clientModalContent").innerHTML = `
@@ -390,9 +392,10 @@ document.addEventListener("click", (event) => {
   const btn = event.target.closest("[data-client-id]");
   if (!btn) return;
   const id = btn.getAttribute("data-client-id");
+  const cnpj = btn.getAttribute("data-client-cnpj");
   const panelMsg = document.getElementById("panelMsg");
-  panelMsg.textContent = `Abrindo detalhes do cliente ${id || "(sem id)"}...`;
-  openClientDetails(id);
+  panelMsg.textContent = `Abrindo detalhes do cliente ${id || cnpj || "(sem id/cnpj)"}...`;
+  openClientDetails(id, cnpj);
 });
 
 function renderCnaeRows(rows) {

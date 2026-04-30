@@ -17,6 +17,7 @@ const SUPABASE_LEADS_TABLE_URL = process.env.SUPABASE_LEADS_TABLE_URL || "";
 const SUPABASE_CLIENTS_TABLE_URL = process.env.SUPABASE_CLIENTS_TABLE_URL || "";
 const SUPABASE_SEARCHES_TABLE_URL = process.env.SUPABASE_SEARCHES_TABLE_URL || "";
 const SUPABASE_ORDERS_TABLE_URL = process.env.SUPABASE_ORDERS_TABLE_URL || "";
+const SUPABASE_ORDER_ITEMS_TABLE_URL = process.env.SUPABASE_ORDER_ITEMS_TABLE_URL || "";
 
 function supabaseHeaders(extra = {}) {
   return {
@@ -117,6 +118,146 @@ app.get("/api/clientes/:id/dashboard", auth, async (req, res) => {
   const totalOrders = orders.length;
   const avgTicket = totalOrders ? totalValue / totalOrders : 0;
   res.json({ cliente, orders, metrics: { totalOrders, totalValue, avgTicket } });
+});
+
+app.get("/api/clientes/:id/details", auth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!SUPABASE_CLIENTS_TABLE_URL || !SUPABASE_ORDERS_TABLE_URL) {
+      return res.status(503).json({ error: "Supabase de clientes/pedidos nao configurado" });
+    }
+
+    const clientUrl = new URL(SUPABASE_CLIENTS_TABLE_URL);
+    clientUrl.searchParams.set("select", "*");
+    clientUrl.searchParams.set("id", `eq.${id}`);
+    clientUrl.searchParams.set("limit", "1");
+    const cResp = await supabaseFetch(clientUrl.toString());
+    const cBody = await cResp.text();
+    if (!cResp.ok) return res.status(cResp.status).send(cBody || "[]");
+    const [cliente] = JSON.parse(cBody || "[]");
+    if (!cliente) return res.status(404).json({ error: "Cliente nao encontrado" });
+
+    const orderUrl = new URL(SUPABASE_ORDERS_TABLE_URL);
+    orderUrl.searchParams.set("select", "id,numero_rp,data_emissao,situacao,valor_total,created_at,cliente_id,cnpj");
+    orderUrl.searchParams.set("order", "created_at.desc");
+    orderUrl.searchParams.set("limit", "300");
+    const ors = [];
+    if (cliente.id) ors.push(`cliente_id.eq.${cliente.id}`);
+    if (cliente.cnpj) ors.push(`cnpj.eq.${String(cliente.cnpj).replace(/\D/g, "")}`);
+    if (ors.length) orderUrl.searchParams.set("or", `(${ors.join(",")})`);
+    const oResp = await supabaseFetch(orderUrl.toString());
+    const oBody = await oResp.text();
+    if (!oResp.ok) return res.status(oResp.status).send(oBody || "[]");
+    const orders = JSON.parse(oBody || "[]");
+
+    let items = [];
+    if (SUPABASE_ORDER_ITEMS_TABLE_URL) {
+      const itemUrl = new URL(SUPABASE_ORDER_ITEMS_TABLE_URL);
+      itemUrl.searchParams.set("select", "*");
+      itemUrl.searchParams.set("limit", "2000");
+      const orderNumbers = [...new Set(orders.map((o) => String(o.numero_rp || "").trim()).filter(Boolean))];
+      if (orderNumbers.length) itemUrl.searchParams.set("numero_rp", `in.(${orderNumbers.join(",")})`);
+      const iResp = await supabaseFetch(itemUrl.toString());
+      const iBody = await iResp.text();
+      if (iResp.ok) items = JSON.parse(iBody || "[]");
+    }
+
+    const totalOrders = orders.length;
+    const totalValue = orders.reduce((sum, o) => sum + Number(o?.valor_total || 0), 0);
+    const avgTicket = totalOrders ? totalValue / totalOrders : 0;
+    const lastPurchaseAt = orders[0]?.data_emissao || orders[0]?.created_at || null;
+
+    const productAgg = new Map();
+    for (const item of items) {
+      const name = String(item?.produto || item?.descricao || item?.item || "Item sem nome");
+      const qty = Number(item?.quantidade || item?.qtd || 1);
+      const value = Number(item?.valor_total || item?.valor || 0);
+      const curr = productAgg.get(name) || { name, qty: 0, value: 0 };
+      curr.qty += qty;
+      curr.value += value;
+      productAgg.set(name, curr);
+    }
+    const topItems = [...productAgg.values()].sort((a, b) => b.qty - a.qty).slice(0, 5);
+
+    res.json({
+      cliente,
+      metrics: { totalOrders, totalValue, avgTicket, lastPurchaseAt },
+      orders: orders.slice(0, 20),
+      topItems,
+      mostBoughtItem: topItems[0] || null,
+      recentItems: items.slice(0, 20),
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Falha ao carregar detalhes do cliente", detail: String(error?.message || error) });
+  }
+});
+
+app.get("/api/clientes/details-by-cnpj/:cnpj", auth, async (req, res) => {
+  try {
+    const cnpj = String(req.params.cnpj || "").replace(/\D/g, "");
+    if (!cnpj) return res.status(400).json({ error: "CNPJ invalido" });
+    if (!SUPABASE_CLIENTS_TABLE_URL || !SUPABASE_ORDERS_TABLE_URL) {
+      return res.status(503).json({ error: "Supabase de clientes/pedidos nao configurado" });
+    }
+
+    const clientUrl = new URL(SUPABASE_CLIENTS_TABLE_URL);
+    clientUrl.searchParams.set("select", "*");
+    clientUrl.searchParams.set("cnpj", `eq.${cnpj}`);
+    clientUrl.searchParams.set("limit", "1");
+    const cResp = await supabaseFetch(clientUrl.toString());
+    const cBody = await cResp.text();
+    if (!cResp.ok) return res.status(cResp.status).send(cBody || "[]");
+    const [cliente] = JSON.parse(cBody || "[]");
+    if (!cliente) return res.status(404).json({ error: "Cliente nao encontrado para esse CNPJ" });
+
+    const orderUrl = new URL(SUPABASE_ORDERS_TABLE_URL);
+    orderUrl.searchParams.set("select", "id,numero_rp,data_emissao,situacao,valor_total,created_at,cliente_id,cnpj");
+    orderUrl.searchParams.set("order", "created_at.desc");
+    orderUrl.searchParams.set("limit", "300");
+    orderUrl.searchParams.set("or", `(cliente_id.eq.${cliente.id},cnpj.eq.${cnpj})`);
+    const oResp = await supabaseFetch(orderUrl.toString());
+    const oBody = await oResp.text();
+    if (!oResp.ok) return res.status(oResp.status).send(oBody || "[]");
+    const orders = JSON.parse(oBody || "[]");
+
+    let items = [];
+    if (SUPABASE_ORDER_ITEMS_TABLE_URL) {
+      const itemUrl = new URL(SUPABASE_ORDER_ITEMS_TABLE_URL);
+      itemUrl.searchParams.set("select", "*");
+      itemUrl.searchParams.set("limit", "2000");
+      const orderNumbers = [...new Set(orders.map((o) => String(o.numero_rp || "").trim()).filter(Boolean))];
+      if (orderNumbers.length) itemUrl.searchParams.set("numero_rp", `in.(${orderNumbers.join(",")})`);
+      const iResp = await supabaseFetch(itemUrl.toString());
+      const iBody = await iResp.text();
+      if (iResp.ok) items = JSON.parse(iBody || "[]");
+    }
+
+    const totalOrders = orders.length;
+    const totalValue = orders.reduce((sum, o) => sum + Number(o?.valor_total || 0), 0);
+    const avgTicket = totalOrders ? totalValue / totalOrders : 0;
+    const lastPurchaseAt = orders[0]?.data_emissao || orders[0]?.created_at || null;
+    const productAgg = new Map();
+    for (const item of items) {
+      const name = String(item?.produto || item?.descricao || item?.item || "Item sem nome");
+      const qty = Number(item?.quantidade || item?.qtd || 1);
+      const value = Number(item?.valor_total || item?.valor || 0);
+      const curr = productAgg.get(name) || { name, qty: 0, value: 0 };
+      curr.qty += qty;
+      curr.value += value;
+      productAgg.set(name, curr);
+    }
+    const topItems = [...productAgg.values()].sort((a, b) => b.qty - a.qty).slice(0, 5);
+    res.json({
+      cliente,
+      metrics: { totalOrders, totalValue, avgTicket, lastPurchaseAt },
+      orders: orders.slice(0, 20),
+      topItems,
+      mostBoughtItem: topItems[0] || null,
+      recentItems: items.slice(0, 20),
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Falha ao carregar detalhes por CNPJ", detail: String(error?.message || error) });
+  }
 });
 
 app.get("/api/dashboard/summary", auth, async (req, res) => {
