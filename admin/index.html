@@ -54,7 +54,11 @@ function togglePassword(inputId, button){
 }
 async function setup(){
   try{
-    const body={name:name.value,email:email.value,password:password.value};
+    const body={
+      name: document.getElementById("name").value,
+      email: document.getElementById("email").value,
+      password: document.getElementById("password").value,
+    };
     const r=await fetch(API+"/api/setup",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});
     const d=await r.json();
     msg.textContent=d?.error?`Erro: ${d.error}`:"Admin criado com sucesso.";
@@ -65,7 +69,10 @@ async function setup(){
 }
 async function login(){
   try{
-    const body={email:lemail.value,password:lpassword.value};
+    const body={
+      email: document.getElementById("lemail").value,
+      password: document.getElementById("lpassword").value,
+    };
     const r=await fetch(API+"/api/login",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});
     const d=await r.json();
     localStorage.setItem("token",d.token||"");
