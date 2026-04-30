@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NeuralHire Admin</title>
+  <style>body{font-family:Arial,sans-serif;background:#111827;color:#fff;margin:0;padding:24px}input,button{padding:10px;margin:6px 0;border-radius:8px;border:1px solid #374151}button{background:#7c3aed;color:#fff;border:0;cursor:pointer}.card{background:#1f2937;padding:16px;border-radius:12px;max-width:520px}.row{display:grid;gap:8px}.muted{opacity:.8}</style>
+</head>
+<body>
+  <h1>NeuralHire Admin</h1>
+  <div class="card">
+    <div id="setup" class="row">
+      <h3>Primeiro acesso</h3>
+      <input id="name" placeholder="Nome" />
+      <input id="email" placeholder="Email" />
+      <input id="password" type="password" placeholder="Senha" />
+      <button onclick="setup()">Criar primeiro admin</button>
+    </div>
+    <div id="login" class="row" hidden>
+      <h3>Login</h3>
+      <input id="lemail" placeholder="Email" />
+      <input id="lpassword" type="password" placeholder="Senha" />
+      <button onclick="login()">Entrar</button>
+    </div>
+    <p id="msg" class="muted"></p>
+  </div>
+<script>
+const API = window.API_BASE || "https://api.seu-dominio.com";
+async function boot(){const r=await fetch(API+"/api/setup/status");const d=await r.json();document.getElementById("setup").hidden=!d.needsSetup;document.getElementById("login").hidden=d.needsSetup;}
+async function setup(){const body={name:name.value,email:email.value,password:password.value};const r=await fetch(API+"/api/setup",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});msg.textContent=JSON.stringify(await r.json());boot();}
+async function login(){const body={email:lemail.value,password:lpassword.value};const r=await fetch(API+"/api/login",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});const d=await r.json();localStorage.setItem("token",d.token||"");msg.textContent=d.token?"Login OK":"Falha login";}
+boot();
+</script>
+</body>
+</html>
