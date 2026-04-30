@@ -29,6 +29,7 @@
     .trend-down{color:#ef4444}
     .toolbar{display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:8px}
     .toolbar-2{display:grid;grid-template-columns:1fr auto;gap:8px}
+    .toolbar-3{display:grid;grid-template-columns:2fr auto auto;gap:8px}
     table{width:100%;border-collapse:collapse}
     th,td{padding:8px;border-bottom:1px solid #2a3648;font-size:13px;text-align:left}
     th{color:var(--muted)}
@@ -116,7 +117,16 @@
 
       <section id="module-clientes" class="card row" style="display:none;">
         <h3>Clientes</h3>
-        <p class="muted">Módulo em preparação: listagem, detalhes, relacionamento e comunicação.</p>
+        <div class="toolbar-3">
+          <input id="clientsSearch" placeholder="Buscar por nome, cnpj, cidade..." oninput="renderClientsTable()" />
+          <button type="button" onclick="loadClients()">Atualizar</button>
+          <button class="btn-secondary" type="button" onclick="clearClientsFilter()">Limpar</button>
+        </div>
+        <table>
+          <thead><tr><th>Empresa</th><th>CNPJ</th><th>Cidade</th><th>Status</th><th>Preposto</th></tr></thead>
+          <tbody id="clientsRows"><tr><td colspan="5">Carregando...</td></tr></tbody>
+        </table>
+        <p id="clientsInfo" class="muted"></p>
       </section>
       <section id="module-leads" class="card row" style="display:none;">
         <h3>Leads</h3>
@@ -157,6 +167,7 @@ const API = window.API_BASE || "https://api.neuralhire.com.br";
 const fmtMoney = (v) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(v || 0));
 const fmtDate = (v) => { const d = new Date(v); return Number.isNaN(d.getTime()) ? "-" : d.toLocaleDateString("pt-BR"); };
 let cnaeMockRows = [];
+let clientsState = [];
 
 function togglePassword(inputId, button){
   const input = document.getElementById(inputId);
@@ -181,6 +192,7 @@ function showModule(name) {
     if (section) section.style.display = active ? "grid" : "none";
     if (nav) nav.classList.toggle("active", active);
   });
+  if (name === "clientes") loadClients();
 }
 
 async function login(){
@@ -252,6 +264,61 @@ async function loadDashboard() {
     if (!cnaeMockRows.length) renderCnaeRows([]);
   } catch (e) {
     panelMsg.textContent = `Falha ao carregar dashboard: ${e.message}`;
+  }
+}
+
+function clearClientsFilter() {
+  const el = document.getElementById("clientsSearch");
+  if (el) el.value = "";
+  renderClientsTable();
+}
+
+function normalizeText(v) {
+  return String(v || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function formatCnpj(v) {
+  const d = String(v || "").replace(/\D/g, "");
+  if (d.length !== 14) return v || "-";
+  return d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
+}
+
+function renderClientsTable() {
+  const q = normalizeText(document.getElementById("clientsSearch")?.value || "");
+  const filtered = clientsState.filter((c) => {
+    if (!q) return true;
+    return [
+      c.empresa, c.razao_social, c.nome_fantasia, c.cnpj, c.cidade, c.status, c.preposto,
+    ].some((f) => normalizeText(f).includes(q));
+  });
+  const rows = document.getElementById("clientsRows");
+  const info = document.getElementById("clientsInfo");
+  rows.innerHTML = filtered.map((c) => `
+    <tr>
+      <td>${c.empresa || c.razao_social || c.nome_fantasia || "-"}</td>
+      <td>${formatCnpj(c.cnpj)}</td>
+      <td>${c.cidade || "-"}</td>
+      <td>${c.status || "ativo"}</td>
+      <td>${c.preposto || "Sem preposto"}</td>
+    </tr>
+  `).join("") || `<tr><td colspan="5">Nenhum cliente encontrado.</td></tr>`;
+  info.textContent = `${filtered.length} cliente(s) exibido(s) de ${clientsState.length}.`;
+}
+
+async function loadClients() {
+  const info = document.getElementById("clientsInfo");
+  const rows = document.getElementById("clientsRows");
+  try {
+    rows.innerHTML = `<tr><td colspan="5">Carregando clientes...</td></tr>`;
+    const data = await authedApi("/api/clientes");
+    clientsState = Array.isArray(data) ? data : [];
+    renderClientsTable();
+  } catch (e) {
+    rows.innerHTML = `<tr><td colspan="5">Falha ao carregar clientes.</td></tr>`;
+    info.textContent = `Erro: ${e.message}`;
   }
 }
 
