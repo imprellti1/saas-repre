@@ -314,9 +314,12 @@ function renderClientsTable() {
       <td>${c.cidade || "-"}</td>
       <td>${c.status || "ativo"}</td>
       <td>${c.preposto || "Sem preposto"}</td>
-      <td><button class="btn-secondary" onclick="openClientDetails('${c.id}')">Detalhes</button></td>
+      <td><button class="btn-secondary" data-client-id="${c.id || ""}">Detalhes</button></td>
     </tr>
   `).join("") || `<tr><td colspan="6">Nenhum cliente encontrado.</td></tr>`;
+  rows.querySelectorAll("[data-client-id]").forEach((btn) => {
+    btn.addEventListener("click", () => openClientDetails(btn.getAttribute("data-client-id")));
+  });
   info.textContent = `${filtered.length} cliente(s) exibido(s) de ${clientsState.length}.`;
 }
 
@@ -342,6 +345,7 @@ function closeClientModal(ev) {
 async function openClientDetails(id) {
   const panelMsg = document.getElementById("panelMsg");
   try {
+    if (!id) throw new Error("Cliente sem ID. Verifique se a tabela clientes possui coluna id preenchida.");
     const data = await authedApi(`/api/clientes/${encodeURIComponent(id)}/details`);
     const c = data.cliente || {};
     document.getElementById("clientModalTitle").textContent = c.empresa || c.razao_social || c.nome_fantasia || "Cliente";
