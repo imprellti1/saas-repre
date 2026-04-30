@@ -78,6 +78,90 @@ app.post("/api/login", async (req, res) => {
   res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
 });
 
+app.post("/api/accounts", auth, async (req, res) => {
+  const actor = await prisma.user.findUnique({ where: { id: req.user.id } });
+  if (!isMasterUser(actor)) return res.status(403).json({ error: "Apenas master pode criar contas" });
+  const { name, slug, ownerName, ownerEmail, ownerPassword, planCode = "basic", trialDays = 15 } = req.body || {};
+  if (!name || !ownerName || !ownerEmail || !ownerPassword) {
+    return res.status(400).json({ error: "name, ownerName, ownerEmail e ownerPassword obrigatorios" });
+  }
+  const plan = await prisma.plan.findUnique({ where: { code: String(planCode) } });
+  if (!plan) return res.status(404).json({ error: "Plano nao encontrado" });
+  const accountSlug = String(slug || name).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  const trialEndsAt = new Date(Date.now() + Number(trialDays) * 24 * 60 * 60 * 1000);
+
+  const result = await prisma.$transaction(async (tx) => {
+    const account = await tx.account.create({
+      data: {
+        name,
+        slug: accountSlug,
+        status: "trial",
+        trialEndsAt,
+        currentPeriodEnd: trialEndsAt,
+        planId: plan.id,
+      },
+    });
+    const passwordHash = await bcrypt.hash(String(ownerPassword), 10);
+    const owner = await tx.user.create({
+      data: {
+        accountId: account.id,
+        name: ownerName,
+        email: String(ownerEmail).toLowerCase(),
+        passwordHash,
+        role: "owner",
+      },
+    });
+    const subscription = await tx.subscription.create({
+      data: {
+        accountId: account.id,
+        planId: plan.id,
+        status: "trialing",
+        billingCycle: "monthly",
+        currentPeriodStart: new Date(),
+        currentPeriodEnd: trialEndsAt,
+      },
+    });
+    return { account, owner, subscription };
+  });
+  res.status(201).json(result);
+});
+
+app.post("/api/accounts/:accountId/users", auth, async (req, res) => {
+  const actor = await prisma.user.findUnique({ where: { id: req.user.id } });
+  if (!actor) return res.status(401).json({ error: "Usuario invalido" });
+  const { accountId } = req.params;
+  const sameAccountAdmin = actor.accountId === accountId && ["owner", "admin"].includes(String(actor.role));
+  if (!isMasterUser(actor) && !sameAccountAdmin) return res.status(403).json({ error: "Sem permissao" });
+  const { name, email, password, role = "operator" } = req.body || {};
+  if (!name || !email || !password) return res.status(400).json({ error: "name, email e password obrigatorios" });
+  const passwordHash = await bcrypt.hash(String(password), 10);
+  const user = await prisma.user.create({
+    data: {
+      accountId,
+      name,
+      email: String(email).toLowerCase(),
+      passwordHash,
+      role,
+    },
+  });
+  res.status(201).json({ id: user.id, accountId: user.accountId, name: user.name, email: user.email, role: user.role });
+});
+
+app.get("/api/accounts/:accountId/subscription", auth, async (req, res) => {
+  const actor = await prisma.user.findUnique({ where: { id: req.user.id } });
+  if (!actor) return res.status(401).json({ error: "Usuario invalido" });
+  const { accountId } = req.params;
+  const sameAccount = actor.accountId === accountId;
+  if (!isMasterUser(actor) && !sameAccount) return res.status(403).json({ error: "Sem permissao" });
+  const subscription = await prisma.subscription.findFirst({
+    where: { accountId },
+    include: { plan: true },
+    orderBy: { createdAt: "desc" },
+  });
+  if (!subscription) return res.status(404).json({ error: "Assinatura nao encontrada" });
+  res.json(subscription);
+});
+
 app.get("/api/clientes", auth, async (_req, res) => {
   const clientes = await prisma.cliente.findMany({ orderBy: { createdAt: "desc" }, take: 500 });
   res.json(clientes);
