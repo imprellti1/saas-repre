@@ -5,28 +5,35 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>NeuralHire Admin</title>
   <style>
-    body{font-family:Arial,sans-serif;background:#0b1224;color:#fff;margin:0;min-height:100vh;display:grid;place-items:center;padding:24px}
-    .shell{width:min(920px,100%)}
-    h1{text-align:center;margin:0 0 16px}
-    input,button{padding:12px;margin:6px 0;border-radius:10px;border:1px solid #374151}
-    button{background:#7c3aed;color:#fff;border:0;cursor:pointer}
-    .btn-secondary{background:#334155}
-    .card{background:#1f2937;padding:16px;border-radius:12px}
+    :root{--bg:#0b1224;--card:#1f2937;--line:#334155;--text:#fff;--muted:#94a3b8;--brand:#7c3aed}
+    body{font-family:Arial,sans-serif;background:radial-gradient(circle at 10% 10%,#16203f,#070d1c 60%);color:var(--text);margin:0;min-height:100vh;padding:24px}
+    .shell{width:min(1100px,100%);margin:0 auto}
+    h1{margin:0 0 16px}
+    .card{background:var(--card);padding:16px;border-radius:12px;border:1px solid #243043}
     .row{display:grid;gap:8px}
-    .muted{opacity:.8}
-    .password-row{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center}
-    .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-    .section{margin-top:16px;padding-top:12px;border-top:1px solid #334155}
-    .list{display:grid;gap:8px}
-    .item{background:#111827;border:1px solid #334155;border-radius:10px;padding:10px}
-    small{opacity:.8}
+    input,button,select{padding:12px;border-radius:10px;border:1px solid var(--line)}
+    button{background:var(--brand);color:#fff;border:0;cursor:pointer}
+    .btn-secondary{background:#334155}
+    .password-row{display:grid;grid-template-columns:1fr auto;gap:8px}
+    .topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+    .metrics{display:grid;grid-template-columns:repeat(4,minmax(160px,1fr));gap:12px;margin-top:14px}
+    .metric{background:#111827;border:1px solid var(--line);border-radius:12px;padding:12px}
+    .metric span{color:var(--muted);font-size:12px}
+    .metric strong{display:block;font-size:24px;margin-top:6px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:8px;border-bottom:1px solid #2a3648;font-size:13px;text-align:left}
+    th{color:var(--muted)}
+    .muted{color:var(--muted);margin-top:8px}
+    #panel{display:none}
+    @media (max-width:900px){.metrics{grid-template-columns:1fr 1fr}.grid{grid-template-columns:1fr}}
   </style>
 </head>
 <body>
   <main class="shell">
-  <h1>NeuralHire Admin</h1>
-  <div class="card">
-    <div id="login" class="row" hidden>
+    <h1>NeuralHire Admin</h1>
+
+    <section id="login" class="card row" style="max-width:560px;margin:0 auto;">
       <h3>Login</h3>
       <input id="lemail" placeholder="Email" />
       <div class="password-row">
@@ -34,52 +41,80 @@
         <button class="btn-secondary" type="button" onclick="togglePassword('lpassword', this)">Mostrar</button>
       </div>
       <button onclick="login()">Entrar</button>
-    </div>
-    <div id="panel" class="row" hidden>
-      <h3>Painel</h3>
-      <p>Autenticado com sucesso.</p>
-      <button type="button" onclick="logout()">Sair</button>
-    </div>
-    <p id="msg" class="muted"></p>
-  </div>
+      <p id="msg" class="muted"></p>
+    </section>
+
+    <section id="panel" class="row">
+      <div class="card topbar">
+        <div>
+          <strong>Resumo executivo</strong>
+          <div class="muted">Visao consolidada da operacao</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <select id="periodFilter" onchange="loadDashboard()">
+            <option value="month">Mes atual</option>
+            <option value="week">Ultimos 7 dias</option>
+            <option value="year">Ano atual</option>
+          </select>
+          <button class="btn-secondary" onclick="logout()">Sair</button>
+        </div>
+      </div>
+
+      <div class="metrics">
+        <article class="metric"><span>Leads</span><strong id="mLeads">0</strong></article>
+        <article class="metric"><span>Clientes</span><strong id="mClients">0</strong></article>
+        <article class="metric"><span>Vendas acumuladas</span><strong id="mSales">R$ 0,00</strong></article>
+        <article class="metric"><span>Pedidos no periodo</span><strong id="mOrders">0</strong></article>
+      </div>
+
+      <div class="grid">
+        <section class="card">
+          <h3>Ultimos pedidos</h3>
+          <table>
+            <thead><tr><th>RP</th><th>Cliente</th><th>Data</th><th>Valor</th></tr></thead>
+            <tbody id="latestOrdersRows"></tbody>
+          </table>
+        </section>
+        <section class="card">
+          <h3>Ranking de clientes (vendas)</h3>
+          <table>
+            <thead><tr><th>Cliente</th><th>Pedidos</th><th>Total</th></tr></thead>
+            <tbody id="topClientsRows"></tbody>
+          </table>
+        </section>
+      </div>
+      <p id="panelMsg" class="muted"></p>
+    </section>
   </main>
+
 <script>
 const API = window.API_BASE || "https://api.neuralhire.com.br";
-function setView({ login=false, panel=false }) {
-  const loginEl = document.getElementById("login");
-  const panelEl = document.getElementById("panel");
-  loginEl.hidden = !login;
-  panelEl.hidden = !panel;
-  loginEl.style.display = login ? "grid" : "none";
-  panelEl.style.display = panel ? "grid" : "none";
-}
+const fmtMoney = (v) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(v || 0));
+const fmtDate = (v) => { const d = new Date(v); return Number.isNaN(d.getTime()) ? "-" : d.toLocaleDateString("pt-BR"); };
 
-async function boot(){
-  const token = localStorage.getItem("token");
-  if (token) {
-    setView({ panel: true });
-    msg.textContent = "Sessao ativa.";
-    return;
-  }
-  setView({ login: true, panel: false });
-}
 function togglePassword(inputId, button){
   const input = document.getElementById(inputId);
   const hidden = input.type === "password";
   input.type = hidden ? "text" : "password";
   button.textContent = hidden ? "Ocultar" : "Mostrar";
 }
+
+function setView(authenticated) {
+  document.getElementById("login").style.display = authenticated ? "none" : "grid";
+  document.getElementById("panel").style.display = authenticated ? "grid" : "none";
+}
+
 async function login(){
+  const msg = document.getElementById("msg");
   try{
-    const body={
-      email: document.getElementById("lemail").value,
-      password: document.getElementById("lpassword").value,
-    };
+    const body={ email: document.getElementById("lemail").value, password: document.getElementById("lpassword").value };
     const r=await fetch(API+"/api/login",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});
     const d=await r.json();
-    localStorage.setItem("token",d.token||"");
-    msg.textContent=d.token?"Login OK":"Falha login";
-    if (d.token) await boot();
+    if (!d.token) throw new Error(d?.error || "Falha de login");
+    localStorage.setItem("token",d.token);
+    msg.textContent="Login OK";
+    setView(true);
+    await loadDashboard();
   }catch(e){
     msg.textContent=`Falha no login: ${e.message}`;
   }
@@ -87,10 +122,57 @@ async function login(){
 
 function logout(){
   localStorage.removeItem("token");
-  msg.textContent = "Sessao encerrada.";
-  boot();
+  setView(false);
 }
-boot();
+
+async function authedApi(path) {
+  const token = localStorage.getItem("token");
+  const r = await fetch(API + path, { headers: { authorization: `Bearer ${token}` } });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d?.error || `Erro HTTP ${r.status}`);
+  return d;
+}
+
+async function loadDashboard() {
+  const panelMsg = document.getElementById("panelMsg");
+  try {
+    const period = document.getElementById("periodFilter").value;
+    const data = await authedApi(`/api/dashboard/summary?period=${encodeURIComponent(period)}`);
+    document.getElementById("mLeads").textContent = String(data.summary?.leads || 0);
+    document.getElementById("mClients").textContent = String(data.summary?.clients || 0);
+    document.getElementById("mSales").textContent = fmtMoney(data.summary?.salesTotal || 0);
+    document.getElementById("mOrders").textContent = String(data.summary?.ordersCount || 0);
+
+    const latestRows = document.getElementById("latestOrdersRows");
+    latestRows.innerHTML = (data.latestOrders || []).map((o) => `
+      <tr>
+        <td>${o.numero_rp || "-"}</td>
+        <td>${o.razao_social || o.cnpj || "-"}</td>
+        <td>${fmtDate(o.data_emissao || o.created_at)}</td>
+        <td>${fmtMoney(o.valor_total)}</td>
+      </tr>
+    `).join("") || '<tr><td colspan="4">Sem pedidos no periodo.</td></tr>';
+
+    const topRows = document.getElementById("topClientsRows");
+    topRows.innerHTML = (data.topClients || []).map((c) => `
+      <tr>
+        <td>${c.name || "-"}</td>
+        <td>${c.orders || 0}</td>
+        <td>${fmtMoney(c.total || 0)}</td>
+      </tr>
+    `).join("") || '<tr><td colspan="3">Sem dados de ranking.</td></tr>';
+
+    panelMsg.textContent = "Dados atualizados com sucesso.";
+  } catch (e) {
+    panelMsg.textContent = `Falha ao carregar dashboard: ${e.message}`;
+  }
+}
+
+(async function boot(){
+  const token = localStorage.getItem("token");
+  setView(Boolean(token));
+  if (token) await loadDashboard();
+})();
 </script>
 </body>
 </html>

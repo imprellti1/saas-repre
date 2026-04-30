@@ -119,6 +119,86 @@ app.get("/api/clientes/:id/dashboard", auth, async (req, res) => {
   res.json({ cliente, orders, metrics: { totalOrders, totalValue, avgTicket } });
 });
 
+app.get("/api/dashboard/summary", auth, async (req, res) => {
+  try {
+    const period = String(req.query.period || "month");
+    if (!SUPABASE_CLIENTS_TABLE_URL || !SUPABASE_ORDERS_TABLE_URL || !SUPABASE_LEADS_TABLE_URL) {
+      return res.status(503).json({ error: "Supabase nao configurado para dashboard" });
+    }
+
+    const [leadsResp, clientsResp, ordersResp] = await Promise.all([
+      (async () => {
+        const u = new URL(SUPABASE_LEADS_TABLE_URL);
+        u.searchParams.set("select", "id");
+        u.searchParams.set("limit", "2000");
+        return supabaseFetch(u.toString());
+      })(),
+      (async () => {
+        const u = new URL(SUPABASE_CLIENTS_TABLE_URL);
+        u.searchParams.set("select", "id,empresa,razao_social,nome_fantasia,cnpj");
+        u.searchParams.set("limit", "2000");
+        return supabaseFetch(u.toString());
+      })(),
+      (async () => {
+        const u = new URL(SUPABASE_ORDERS_TABLE_URL);
+        u.searchParams.set("select", "id,numero_rp,data_emissao,razao_social,cnpj,situacao,valor_total,created_at,cliente_id");
+        u.searchParams.set("order", "created_at.desc");
+        u.searchParams.set("limit", "3000");
+        return supabaseFetch(u.toString());
+      })(),
+    ]);
+
+    const [leadsBody, clientsBody, ordersBody] = await Promise.all([leadsResp.text(), clientsResp.text(), ordersResp.text()]);
+    if (!leadsResp.ok) return res.status(leadsResp.status).send(leadsBody || "[]");
+    if (!clientsResp.ok) return res.status(clientsResp.status).send(clientsBody || "[]");
+    if (!ordersResp.ok) return res.status(ordersResp.status).send(ordersBody || "[]");
+
+    const leads = JSON.parse(leadsBody || "[]");
+    const clients = JSON.parse(clientsBody || "[]");
+    const ordersAll = JSON.parse(ordersBody || "[]");
+
+    const now = new Date();
+    const start = new Date(now);
+    if (period === "week") start.setDate(now.getDate() - 7);
+    else if (period === "year") start.setFullYear(now.getFullYear(), 0, 1);
+    else start.setMonth(now.getMonth(), 1);
+    start.setHours(0, 0, 0, 0);
+
+    const filteredOrders = ordersAll.filter((o) => {
+      const d = new Date(o?.data_emissao || o?.created_at || 0);
+      return !Number.isNaN(d.getTime()) && d >= start;
+    });
+
+    const totalSales = filteredOrders.reduce((sum, o) => sum + Number(o?.valor_total || 0), 0);
+    const latestOrders = filteredOrders.slice(0, 10);
+
+    const rankingMap = new Map();
+    for (const o of filteredOrders) {
+      const key = String(o?.cliente_id || o?.cnpj || o?.razao_social || "sem_cliente");
+      const name = o?.razao_social || o?.cnpj || "Sem identificacao";
+      const curr = rankingMap.get(key) || { key, name, total: 0, orders: 0 };
+      curr.total += Number(o?.valor_total || 0);
+      curr.orders += 1;
+      rankingMap.set(key, curr);
+    }
+    const topClients = [...rankingMap.values()].sort((a, b) => b.total - a.total).slice(0, 10);
+
+    res.json({
+      period,
+      summary: {
+        leads: leads.length,
+        clients: clients.length,
+        salesTotal: totalSales,
+        ordersCount: filteredOrders.length,
+      },
+      latestOrders,
+      topClients,
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Falha ao carregar dashboard", detail: String(error?.message || error) });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`API running on :${PORT}`);
 });
