@@ -50,20 +50,28 @@
   </main>
 <script>
 const API = window.API_BASE || "https://api.neuralhire.com.br";
+function setView({ setup=false, login=false, panel=false }) {
+  const setupEl = document.getElementById("setup");
+  const loginEl = document.getElementById("login");
+  const panelEl = document.getElementById("panel");
+  setupEl.hidden = !setup;
+  loginEl.hidden = !login;
+  panelEl.hidden = !panel;
+  setupEl.style.display = setup ? "grid" : "none";
+  loginEl.style.display = login ? "grid" : "none";
+  panelEl.style.display = panel ? "grid" : "none";
+}
+
 async function boot(){
   const token = localStorage.getItem("token");
   if (token) {
-    document.getElementById("setup").hidden = true;
-    document.getElementById("login").hidden = true;
-    document.getElementById("panel").hidden = false;
+    setView({ panel: true });
     msg.textContent = "Sessao ativa.";
     return;
   }
   const r=await fetch(API+"/api/setup/status");
   const d=await r.json();
-  document.getElementById("setup").hidden=!d.needsSetup;
-  document.getElementById("login").hidden=d.needsSetup;
-  document.getElementById("panel").hidden = true;
+  setView({ setup: !!d.needsSetup, login: !d.needsSetup, panel: false });
 }
 function togglePassword(inputId, button){
   const input = document.getElementById(inputId);
