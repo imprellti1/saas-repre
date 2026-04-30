@@ -40,12 +40,31 @@
       </div>
       <button onclick="login()">Entrar</button>
     </div>
+    <div id="panel" class="row" hidden>
+      <h3>Painel</h3>
+      <p>Autenticado com sucesso.</p>
+      <button type="button" onclick="logout()">Sair</button>
+    </div>
     <p id="msg" class="muted"></p>
   </div>
   </main>
 <script>
 const API = window.API_BASE || "https://api.neuralhire.com.br";
-async function boot(){const r=await fetch(API+"/api/setup/status");const d=await r.json();document.getElementById("setup").hidden=!d.needsSetup;document.getElementById("login").hidden=d.needsSetup;}
+async function boot(){
+  const token = localStorage.getItem("token");
+  if (token) {
+    document.getElementById("setup").hidden = true;
+    document.getElementById("login").hidden = true;
+    document.getElementById("panel").hidden = false;
+    msg.textContent = "Sessao ativa.";
+    return;
+  }
+  const r=await fetch(API+"/api/setup/status");
+  const d=await r.json();
+  document.getElementById("setup").hidden=!d.needsSetup;
+  document.getElementById("login").hidden=d.needsSetup;
+  document.getElementById("panel").hidden = true;
+}
 function togglePassword(inputId, button){
   const input = document.getElementById(inputId);
   const hidden = input.type === "password";
@@ -77,9 +96,15 @@ async function login(){
     const d=await r.json();
     localStorage.setItem("token",d.token||"");
     msg.textContent=d.token?"Login OK":"Falha login";
+    if (d.token) await boot();
   }catch(e){
     msg.textContent=`Falha no login: ${e.message}`;
   }
+}
+function logout(){
+  localStorage.removeItem("token");
+  msg.textContent = "Sessao encerrada.";
+  boot();
 }
 boot();
 </script>
