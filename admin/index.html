@@ -386,6 +386,15 @@ async function openClientDetails(id) {
   }
 }
 
+document.addEventListener("click", (event) => {
+  const btn = event.target.closest("[data-client-id]");
+  if (!btn) return;
+  const id = btn.getAttribute("data-client-id");
+  const panelMsg = document.getElementById("panelMsg");
+  panelMsg.textContent = `Abrindo detalhes do cliente ${id || "(sem id)"}...`;
+  openClientDetails(id);
+});
+
 function renderCnaeRows(rows) {
   const tbody = document.getElementById("cnaeRows");
   tbody.innerHTML = rows.map((r, idx) => `
