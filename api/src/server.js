@@ -168,8 +168,19 @@ app.get("/api/dashboard/summary", auth, async (req, res) => {
       const d = new Date(o?.data_emissao || o?.created_at || 0);
       return !Number.isNaN(d.getTime()) && d >= start;
     });
+    const periodMs = now.getTime() - start.getTime();
+    const prevStart = new Date(start.getTime() - periodMs);
+    const prevEnd = new Date(start.getTime() - 1);
+    const previousOrders = ordersAll.filter((o) => {
+      const d = new Date(o?.data_emissao || o?.created_at || 0);
+      return !Number.isNaN(d.getTime()) && d >= prevStart && d <= prevEnd;
+    });
 
     const totalSales = filteredOrders.reduce((sum, o) => sum + Number(o?.valor_total || 0), 0);
+    const previousSales = previousOrders.reduce((sum, o) => sum + Number(o?.valor_total || 0), 0);
+    const avgTicket = filteredOrders.length ? totalSales / filteredOrders.length : 0;
+    const growthValue = totalSales - previousSales;
+    const growthPercent = previousSales > 0 ? (growthValue / previousSales) * 100 : (totalSales > 0 ? 100 : 0);
     const latestOrders = filteredOrders.slice(0, 10);
 
     const rankingMap = new Map();
@@ -190,6 +201,9 @@ app.get("/api/dashboard/summary", auth, async (req, res) => {
         clients: clients.length,
         salesTotal: totalSales,
         ordersCount: filteredOrders.length,
+        avgTicket,
+        growthValue,
+        growthPercent,
       },
       latestOrders,
       topClients,

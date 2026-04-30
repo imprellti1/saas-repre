@@ -21,6 +21,8 @@
     .metric span{color:var(--muted);font-size:12px}
     .metric strong{display:block;font-size:24px;margin-top:6px}
     .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+    .trend-up{color:#22c55e}
+    .trend-down{color:#ef4444}
     table{width:100%;border-collapse:collapse}
     th,td{padding:8px;border-bottom:1px solid #2a3648;font-size:13px;text-align:left}
     th{color:var(--muted)}
@@ -65,6 +67,10 @@
         <article class="metric"><span>Clientes</span><strong id="mClients">0</strong></article>
         <article class="metric"><span>Vendas acumuladas</span><strong id="mSales">R$ 0,00</strong></article>
         <article class="metric"><span>Pedidos no periodo</span><strong id="mOrders">0</strong></article>
+      </div>
+      <div class="metrics" style="margin-top:10px;">
+        <article class="metric"><span>Ticket medio</span><strong id="mAvgTicket">R$ 0,00</strong></article>
+        <article class="metric"><span>Crescimento vs periodo anterior</span><strong id="mGrowthPercent">0%</strong><small id="mGrowthValue">R$ 0,00</small></article>
       </div>
 
       <div class="grid">
@@ -142,6 +148,13 @@ async function loadDashboard() {
     document.getElementById("mClients").textContent = String(data.summary?.clients || 0);
     document.getElementById("mSales").textContent = fmtMoney(data.summary?.salesTotal || 0);
     document.getElementById("mOrders").textContent = String(data.summary?.ordersCount || 0);
+    document.getElementById("mAvgTicket").textContent = fmtMoney(data.summary?.avgTicket || 0);
+    const gp = Number(data.summary?.growthPercent || 0);
+    const gv = Number(data.summary?.growthValue || 0);
+    const growthEl = document.getElementById("mGrowthPercent");
+    growthEl.textContent = `${gp.toFixed(1)}%`;
+    growthEl.className = gp >= 0 ? "trend-up" : "trend-down";
+    document.getElementById("mGrowthValue").textContent = `${gv >= 0 ? "+" : ""}${fmtMoney(gv)}`;
 
     const latestRows = document.getElementById("latestOrdersRows");
     latestRows.innerHTML = (data.latestOrders || []).map((o) => `
