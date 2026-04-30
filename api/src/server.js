@@ -1,38 +1,34 @@
 const express = require("express");
 const cors = require("cors");
-const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const { PrismaClient } = require("@prisma/client");
 require("dotenv").config();
 
 const app = express();
-const prisma = new PrismaClient();
-
 app.use(cors());
 app.use(express.json());
 
 const PORT = Number(process.env.PORT || 3000);
 const JWT_SECRET = process.env.JWT_SECRET || "change-me";
 const MASTER_EMAIL = String(process.env.MASTER_EMAIL || "").toLowerCase();
+const MASTER_PASSWORD = String(process.env.MASTER_PASSWORD || "");
 
-function isMasterUser(user) {
-  if (!user) return false;
-  if (String(user.role || "").toLowerCase() === "owner" && !user.accountId) return true;
-  return MASTER_EMAIL && String(user.email || "").toLowerCase() === MASTER_EMAIL;
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || "";
+const SUPABASE_LEADS_TABLE_URL = process.env.SUPABASE_LEADS_TABLE_URL || "";
+const SUPABASE_CLIENTS_TABLE_URL = process.env.SUPABASE_CLIENTS_TABLE_URL || "";
+const SUPABASE_SEARCHES_TABLE_URL = process.env.SUPABASE_SEARCHES_TABLE_URL || "";
+const SUPABASE_ORDERS_TABLE_URL = process.env.SUPABASE_ORDERS_TABLE_URL || "";
+
+function supabaseHeaders(extra = {}) {
+  return {
+    apikey: SUPABASE_SERVICE_KEY,
+    Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
+    "Content-Type": "application/json",
+    ...extra,
+  };
 }
 
-async function hasActiveAccess(user) {
-  if (!user) return false;
-  if (isMasterUser(user)) return true;
-  if (!user.accountId) return false;
-  const sub = await prisma.subscription.findFirst({
-    where: { accountId: user.accountId },
-    orderBy: { createdAt: "desc" },
-  });
-  if (!sub) return false;
-  if (!["active", "trialing"].includes(String(sub.status || ""))) return false;
-  if (!sub.currentPeriodEnd) return true;
-  return new Date(sub.currentPeriodEnd).getTime() >= Date.now();
+async function supabaseFetch(url, options = {}) {
+  return fetch(url, { ...options, headers: supabaseHeaders(options.headers || {}) });
 }
 
 function auth(req, res, next) {
@@ -47,143 +43,77 @@ function auth(req, res, next) {
 }
 
 app.get("/api/health", async (_req, res) => {
-  res.json({ ok: true, service: "neuralhire-api", now: new Date().toISOString() });
+  res.json({
+    ok: true,
+    service: "neuralhire-api",
+    now: new Date().toISOString(),
+    supabaseConfigured: Boolean(SUPABASE_SERVICE_KEY && SUPABASE_CLIENTS_TABLE_URL),
+  });
 });
 
 app.get("/api/setup/status", async (_req, res) => {
-  const count = await prisma.user.count();
-  res.json({ needsSetup: count === 0 });
+  res.json({ needsSetup: false });
 });
 
-app.post("/api/setup", async (req, res) => {
-  const count = await prisma.user.count();
-  if (count > 0) return res.status(409).json({ error: "Setup ja realizado" });
-  const { name, email, password } = req.body || {};
-  if (!name || !email || !password) return res.status(400).json({ error: "name, email e password obrigatorios" });
-  const passwordHash = await bcrypt.hash(String(password), 10);
-  const user = await prisma.user.create({ data: { name, email: String(email).toLowerCase(), passwordHash, role: "admin" } });
-  const token = jwt.sign({ id: user.id, role: user.role, email: user.email }, JWT_SECRET, { expiresIn: "12h" });
-  res.status(201).json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
+app.post("/api/setup", async (_req, res) => {
+  res.status(409).json({ error: "Setup desabilitado. Use login master." });
 });
 
 app.post("/api/login", async (req, res) => {
   const { email, password } = req.body || {};
-  const user = await prisma.user.findUnique({ where: { email: String(email || "").toLowerCase() } });
-  if (!user) return res.status(401).json({ error: "Credenciais invalidas" });
-  const ok = await bcrypt.compare(String(password || ""), user.passwordHash);
-  if (!ok) return res.status(401).json({ error: "Credenciais invalidas" });
-  const allowed = await hasActiveAccess(user);
-  if (!allowed) return res.status(402).json({ error: "Acesso expirado ou assinatura inativa" });
-  const token = jwt.sign({ id: user.id, role: user.role, email: user.email }, JWT_SECRET, { expiresIn: "12h" });
-  res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
-});
-
-app.post("/api/accounts", auth, async (req, res) => {
-  const actor = await prisma.user.findUnique({ where: { id: req.user.id } });
-  if (!isMasterUser(actor)) return res.status(403).json({ error: "Apenas master pode criar contas" });
-  const { name, slug, ownerName, ownerEmail, ownerPassword, planCode = "basic", trialDays = 15 } = req.body || {};
-  if (!name || !ownerName || !ownerEmail || !ownerPassword) {
-    return res.status(400).json({ error: "name, ownerName, ownerEmail e ownerPassword obrigatorios" });
+  if (!MASTER_EMAIL || !MASTER_PASSWORD) {
+    return res.status(503).json({ error: "MASTER_EMAIL/MASTER_PASSWORD nao configurados" });
   }
-  const plan = await prisma.plan.findUnique({ where: { code: String(planCode) } });
-  if (!plan) return res.status(404).json({ error: "Plano nao encontrado" });
-  const accountSlug = String(slug || name).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-  const trialEndsAt = new Date(Date.now() + Number(trialDays) * 24 * 60 * 60 * 1000);
-
-  const result = await prisma.$transaction(async (tx) => {
-    const account = await tx.account.create({
-      data: {
-        name,
-        slug: accountSlug,
-        status: "trial",
-        trialEndsAt,
-        currentPeriodEnd: trialEndsAt,
-        planId: plan.id,
-      },
-    });
-    const passwordHash = await bcrypt.hash(String(ownerPassword), 10);
-    const owner = await tx.user.create({
-      data: {
-        accountId: account.id,
-        name: ownerName,
-        email: String(ownerEmail).toLowerCase(),
-        passwordHash,
-        role: "owner",
-      },
-    });
-    const subscription = await tx.subscription.create({
-      data: {
-        accountId: account.id,
-        planId: plan.id,
-        status: "trialing",
-        billingCycle: "monthly",
-        currentPeriodStart: new Date(),
-        currentPeriodEnd: trialEndsAt,
-      },
-    });
-    return { account, owner, subscription };
-  });
-  res.status(201).json(result);
-});
-
-app.post("/api/accounts/:accountId/users", auth, async (req, res) => {
-  const actor = await prisma.user.findUnique({ where: { id: req.user.id } });
-  if (!actor) return res.status(401).json({ error: "Usuario invalido" });
-  const { accountId } = req.params;
-  const sameAccountAdmin = actor.accountId === accountId && ["owner", "admin"].includes(String(actor.role));
-  if (!isMasterUser(actor) && !sameAccountAdmin) return res.status(403).json({ error: "Sem permissao" });
-  const { name, email, password, role = "operator" } = req.body || {};
-  if (!name || !email || !password) return res.status(400).json({ error: "name, email e password obrigatorios" });
-  const passwordHash = await bcrypt.hash(String(password), 10);
-  const user = await prisma.user.create({
-    data: {
-      accountId,
-      name,
-      email: String(email).toLowerCase(),
-      passwordHash,
-      role,
-    },
-  });
-  res.status(201).json({ id: user.id, accountId: user.accountId, name: user.name, email: user.email, role: user.role });
-});
-
-app.get("/api/accounts/:accountId/subscription", auth, async (req, res) => {
-  const actor = await prisma.user.findUnique({ where: { id: req.user.id } });
-  if (!actor) return res.status(401).json({ error: "Usuario invalido" });
-  const { accountId } = req.params;
-  const sameAccount = actor.accountId === accountId;
-  if (!isMasterUser(actor) && !sameAccount) return res.status(403).json({ error: "Sem permissao" });
-  const subscription = await prisma.subscription.findFirst({
-    where: { accountId },
-    include: { plan: true },
-    orderBy: { createdAt: "desc" },
-  });
-  if (!subscription) return res.status(404).json({ error: "Assinatura nao encontrada" });
-  res.json(subscription);
+  if (String(email || "").toLowerCase() !== MASTER_EMAIL || String(password || "") !== MASTER_PASSWORD) {
+    return res.status(401).json({ error: "Credenciais invalidas" });
+  }
+  const user = { id: "master", name: "Master", email: MASTER_EMAIL, role: "owner" };
+  const token = jwt.sign(user, JWT_SECRET, { expiresIn: "12h" });
+  res.json({ token, user });
 });
 
 app.get("/api/clientes", auth, async (_req, res) => {
-  const clientes = await prisma.cliente.findMany({ orderBy: { createdAt: "desc" }, take: 500 });
-  res.json(clientes);
-});
-
-app.post("/api/clientes", auth, async (req, res) => {
-  const { nome, cnpj, cidade, preposto, status } = req.body || {};
-  if (!nome) return res.status(400).json({ error: "nome obrigatorio" });
-  const cliente = await prisma.cliente.create({ data: { nome, cnpj: (cnpj || "").replace(/\D/g, "") || null, cidade: cidade || null, preposto: preposto || null, status: status || "ativo" } });
-  res.status(201).json(cliente);
+  if (!SUPABASE_CLIENTS_TABLE_URL) return res.status(503).json({ error: "SUPABASE_CLIENTS_TABLE_URL nao configurado" });
+  const url = new URL(SUPABASE_CLIENTS_TABLE_URL);
+  url.searchParams.set("select", "*");
+  url.searchParams.set("limit", "500");
+  url.searchParams.set("order", "criado_em.desc");
+  const response = await supabaseFetch(url.toString());
+  const body = await response.text();
+  if (!response.ok) return res.status(response.status).send(body || "[]");
+  res.type("application/json").send(body || "[]");
 });
 
 app.get("/api/clientes/:id/dashboard", auth, async (req, res) => {
   const { id } = req.params;
-  const cliente = await prisma.cliente.findUnique({ where: { id } });
+  if (!SUPABASE_CLIENTS_TABLE_URL || !SUPABASE_ORDERS_TABLE_URL) {
+    return res.status(503).json({ error: "Supabase de clientes/pedidos nao configurado" });
+  }
+
+  const clientUrl = new URL(SUPABASE_CLIENTS_TABLE_URL);
+  clientUrl.searchParams.set("select", "*");
+  clientUrl.searchParams.set("id", `eq.${id}`);
+  clientUrl.searchParams.set("limit", "1");
+  const cResp = await supabaseFetch(clientUrl.toString());
+  const cBody = await cResp.text();
+  if (!cResp.ok) return res.status(cResp.status).send(cBody || "[]");
+  const [cliente] = JSON.parse(cBody || "[]");
   if (!cliente) return res.status(404).json({ error: "Cliente nao encontrado" });
-  const orders = await prisma.pedido.findMany({
-    where: { OR: [{ clienteId: id }, ...(cliente.cnpj ? [{ cnpj: cliente.cnpj }] : [])] },
-    orderBy: { createdAt: "desc" },
-    take: 10,
-  });
-  const totalValue = orders.reduce((sum, o) => sum + Number(o.valorTotal || 0), 0);
+
+  const orderUrl = new URL(SUPABASE_ORDERS_TABLE_URL);
+  orderUrl.searchParams.set("select", "id,numero_rp,data_emissao,situacao,valor_total,valor_comissao,valor_preposto,created_at,cliente_id,cnpj");
+  orderUrl.searchParams.set("order", "created_at.desc");
+  orderUrl.searchParams.set("limit", "10");
+  const ors = [];
+  if (cliente.id) ors.push(`cliente_id.eq.${cliente.id}`);
+  if (cliente.cnpj) ors.push(`cnpj.eq.${String(cliente.cnpj).replace(/\\D/g, "")}`);
+  if (ors.length) orderUrl.searchParams.set("or", `(${ors.join(",")})`);
+
+  const oResp = await supabaseFetch(orderUrl.toString());
+  const oBody = await oResp.text();
+  if (!oResp.ok) return res.status(oResp.status).send(oBody || "[]");
+  const orders = JSON.parse(oBody || "[]");
+  const totalValue = orders.reduce((sum, o) => sum + Number(o?.valor_total || 0), 0);
   const totalOrders = orders.length;
   const avgTicket = totalOrders ? totalValue / totalOrders : 0;
   res.json({ cliente, orders, metrics: { totalOrders, totalValue, avgTicket } });
