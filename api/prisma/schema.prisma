@@ -42,38 +42,38 @@ enum InvoiceStatus {
 }
 
 model Plan {
-  id             String         @id @default(uuid())
-  code           String         @unique
-  name           String
-  description    String?
-  priceMonthly   Decimal        @db.Decimal(10, 2)
-  priceYearly    Decimal?       @db.Decimal(10, 2)
-  userLimit      Int            @default(1)
-  leadLimit      Int?
-  isActive       Boolean        @default(true)
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
-  accounts       Account[]
-  subscriptions  Subscription[]
+  id            String         @id @default(uuid())
+  code          String         @unique
+  name          String
+  description   String?
+  priceMonthly  Decimal        @db.Decimal(10, 2)
+  priceYearly   Decimal?       @db.Decimal(10, 2)
+  userLimit     Int            @default(1)
+  leadLimit     Int?
+  isActive      Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  accounts      Account[]
+  subscriptions Subscription[]
 }
 
 model Account {
-  id               String          @id @default(uuid())
+  id               String         @id @default(uuid())
   name             String
-  slug             String          @unique
-  status           AccountStatus   @default(trial)
+  slug             String         @unique
+  status           AccountStatus  @default(trial)
   trialEndsAt      DateTime?
   currentPeriodEnd DateTime?
   planId           String?
-  plan             Plan?           @relation(fields: [planId], references: [id])
+  plan             Plan?          @relation(fields: [planId], references: [id])
   users            User[]
   clientes         Cliente[]
   pedidos          Pedido[]
   subscriptions    Subscription[]
   invoices         Invoice[]
   usageEvents      UsageEvent[]
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
 }
 
 model User {
@@ -107,17 +107,17 @@ model Cliente {
 }
 
 model Pedido {
-  id            String   @id @default(uuid())
-  accountId      String?
-  numeroRp      String
-  cnpj          String?  @db.VarChar(14)
-  situacao      String?
-  valorTotal    Decimal? @db.Decimal(14, 2)
-  dataEmissao   DateTime?
-  clienteId     String?
-  cliente       Cliente? @relation(fields: [clienteId], references: [id])
-  account       Account? @relation(fields: [accountId], references: [id])
-  createdAt     DateTime @default(now())
+  id          String   @id @default(uuid())
+  accountId   String?
+  numeroRp    String
+  cnpj        String?  @db.VarChar(14)
+  situacao    String?
+  valorTotal  Decimal? @db.Decimal(14, 2)
+  dataEmissao DateTime?
+  clienteId   String?
+  cliente     Cliente? @relation(fields: [clienteId], references: [id])
+  account     Account? @relation(fields: [accountId], references: [id])
+  createdAt   DateTime @default(now())
 
   @@index([accountId])
   @@index([clienteId])
@@ -140,6 +140,7 @@ model Subscription {
   currentPeriodEnd      DateTime?
   cancelAtPeriodEnd     Boolean            @default(false)
   canceledAt            DateTime?
+  invoices              Invoice[]
   createdAt             DateTime           @default(now())
   updatedAt             DateTime           @updatedAt
 
